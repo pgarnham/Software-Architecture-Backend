@@ -1,0 +1,83 @@
+name: Django CI
+
+on:
+  push:
+    branches:
+      - master
+      - development
+  pull_request:
+    branches:
+      - master
+      - development
+
+jobs:
+  build:
+    name: CI Build and Test Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup python environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Check Python version 
+        run: python --version
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      - name: Run Tests
+        run: python manage.py test
+        env:
+          NAME: ${{ secrets.NAME }}
+          USER: ${{ secrets.USER }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          HOST: ${{ secrets.HOST }}
+          PORT: ${{ secrets.PORT }}
+
+  deploy:
+    name: CD Pipeline
+    runs-on: ubuntu-latest
+
+    needs: 
+      - build
+
+    if: github.ref == 'refs/heads/master'
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install AWS CLI 2
+        run: |
+              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+              unzip awscliv2.zip
+              sudo ./aws/install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: AWS Deploy push
+        run: |
+          aws deploy push \
+          --application-name ${{ 'iluovo-app' }} \
+          --description "This is a revision for the iluovo-app-${{ github.sha }}" \
+          --ignore-hidden-files \
+          --s3-location s3://${{ 'iluovo-codedeploy-deployments' }}/${{ 'deploy-files' }}.zip \
+          --source .
+
+      - name: AWS Create Deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ 'iluovo-app' }} \
+            --deployment-config-name CodeDeployDefault.OneAtATime \
+            --deployment-group-name ${{ 'asg-deployment-group' }} \
+            --file-exists-behavior OVERWRITE \
+            --s3-location bucket=${{ 'iluovo-codedeploy-deployments' }},key=${{ 'deploy-files' }}.zip,bundleType=zip \

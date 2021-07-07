@@ -1,0 +1,15 @@
+version: '2'
+services:
+  django:
+    build: .
+    command: bash -c "NEW_RELIC_CONFIG_FILE=./iluovo/newrelic.ini newrelic-admin run-program python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/myapp
+    ports:
+      - '8000:8000'
+
+  redis:
+    image: 'redis:5'
+    ports:
+      - '6379:6379'
+  
